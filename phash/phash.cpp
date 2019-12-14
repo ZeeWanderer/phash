@@ -269,31 +269,7 @@ hash_bin GetDiffHash(stbi_uc* image, int width, int height, int channels)
 
 hash_bin GetCosineHash(stbi_uc* image, int width, int height, int channels)
 {
-	const size_t size = (size_t)width * height * channels;
-	double* dct_arr = new double[size];
-	memset(dct_arr, 0, size * sizeof(*dct_arr));
-
-	double alpha_u = 1 / sqrt(width);
-	double alpha_v = 1 / sqrt(height);
-
-	for (size_t idx_v = 0; idx_v < height; idx_v++)
-	{
-		for (size_t idx_u = 0; idx_u < width; idx_u++)
-		{
-			///////////////////
-			for (size_t idx_y = 0; idx_y < height; idx_y++)
-			{
-				for (size_t idx_x = 0; idx_x < width; idx_x++)
-				{
-					dct_arr[idx_v * width + idx_u] += alpha_u * alpha_v * (double)image[idx_y * width + idx_x] * cos((double)((2 * idx_x + 1) * idx_u) * M_PI / (2.0 * (double)width)) * cos((double)((2 * idx_y + 1) * idx_v) * M_PI / (2.0 * (double)height));
-				}
-			}
-			if (idx_u == 0)
-				alpha_u = sqrt(2.0 / (double)width);
-		}
-		if (idx_v == 0)
-			alpha_v = sqrt(2.0 /(double)height);
-	}
+	const size_t size = (size_t)width * height * channels;	
 
 	auto b_width = width / 4;
 	auto b_height = height / 4;
@@ -302,13 +278,25 @@ hash_bin GetCosineHash(stbi_uc* image, int width, int height, int channels)
 	hash_bin hash(b_size);
 
 	double* b_dct_arr = new double[b_size];
+	memset(b_dct_arr, 0, b_size * sizeof(*b_dct_arr));
 
+	double alpha_u = sqrt(2.0 / (double)width);
+	double alpha_v = sqrt(2.0 / (double)height);
 
-	for (size_t idx_y = 0; idx_y < b_height; idx_y++)
+	for (size_t idx_v = 0; idx_v < b_height; idx_v++)
 	{
-		for (size_t idx_x = 0; idx_x < b_width; idx_x++)
+		const auto real_idx_v = (idx_v + 1);
+		for (size_t idx_u = 0; idx_u < b_width; idx_u++)
 		{
-			b_dct_arr[idx_y * b_width + idx_x] = dct_arr[(idx_y + 1) * width + idx_x + 1];
+			const auto real_idx_u = (idx_u + 1);
+			///////////////////
+			for (size_t idx_y = 0; idx_y < height; idx_y++)
+			{
+				for (size_t idx_x = 0; idx_x < width; idx_x++)
+				{
+					b_dct_arr[idx_v * b_width + idx_u] += alpha_u * alpha_v * (double)image[idx_y * width + idx_x] * cos((double)((2 * idx_x + 1) * real_idx_u) * M_PI / (2.0 * (double)width)) * cos((double)((2 * idx_y + 1) * real_idx_v) * M_PI / (2.0 * (double)height));
+				}
+			}
 		}
 	}
 
@@ -325,16 +313,15 @@ hash_bin GetCosineHash(stbi_uc* image, int width, int height, int channels)
 		const auto tmp = b_dct_arr[idx];
 		if (tmp < mean)
 		{
-			hash[idx] = 0;
+			hash[idx] = false;
 		}
 		else
 		{
-			hash[idx] = 1;
+			hash[idx] = true;
 		}
 	}
 
 	delete[] b_dct_arr;
-	delete[] dct_arr;
 	return hash;
 }
 
