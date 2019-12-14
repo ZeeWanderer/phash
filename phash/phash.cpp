@@ -182,11 +182,11 @@ hash_bin GetSimpleHash(stbi_uc* image, int width, int height, int channels)
 		const auto tmp = image[idx];
 		if (tmp < mean)
 		{
-			hash[idx] = 0;
+			hash[idx] = false;
 		}
 		else
 		{
-			hash[idx] = 1;
+			hash[idx] = true;
 		}
 	}
 
@@ -221,11 +221,11 @@ hash_bin GetMedianHash(stbi_uc* image, int width, int height, int channels)
 		const auto tmp = image[idx];
 		if (tmp < median)
 		{
-			hash[idx] = 0;
+			hash[idx] = false;
 		}
 		else
 		{
-			hash[idx] = 1;
+			hash[idx] = true;
 		}
 	}
 
