@@ -404,11 +404,19 @@ ErrorType GetErrorTypeFromString(const std::string& type)
 	return ErrorType::Unknown;
 }
 
-const std::map<HashType, std::tuple<int, int>> hash_image_sizes
+const std::map<HashType, std::tuple<int, int>> hash_sizes
 {
 	{HashType::SimpleHash, {32, 32}},
 	{HashType::MedianHash, {32, 32}},
 	{HashType::CosineHash, {8, 8}},
+	{HashType::DiffHash, {32, 32}} // (K+1)xK
+};
+
+const std::map<HashType, std::tuple<int, int>> hash_image_sizes
+{
+	{HashType::SimpleHash, {32, 32}},
+	{HashType::MedianHash, {32, 32}},
+	{HashType::CosineHash, {32, 32}},
 	{HashType::DiffHash, {33, 32}} // (K+1)xK
 };
 
@@ -431,9 +439,24 @@ const std::tuple<int, int> GetHashResolution(const int base, const HashType type
 	case HashType::SimpleHash:
 	case HashType::MedianHash:
 	case HashType::CosineHash:
-		return {base, base};
 	case HashType::DiffHash:
-		return {base + 1, base};
+		return {base, base};
+	default:
+		return { 0, 0 };
+	}
+}
+
+const std::tuple<int, int> GetHashImageResolution(const int base, const HashType type)
+{
+	switch (type)
+	{
+	case HashType::SimpleHash:
+	case HashType::MedianHash:
+		return { base, base };
+	case HashType::CosineHash:
+		return { base*4, base*4 };
+	case HashType::DiffHash:
+		return { base + 1, base };
 	default:
 		return { 0, 0 };
 	}
@@ -624,18 +647,27 @@ int main(int argc, char** argv)
 
 	// Define in loop shared parameters
 	int hash_width, hash_height;
+	int hash_image_width, hash_image_height;
 
 	if (FLAGS_resolution)
 	{
 		const auto [tmp_width, tmp_height] = GetHashResolution(FLAGS_resolution, hash_type);
 		hash_width = tmp_width;
 		hash_height = tmp_height;
+
+		const auto [tmp_image_width, tmp_image_height] = GetHashImageResolution(FLAGS_resolution, hash_type);
+		hash_image_width = tmp_image_width;
+		hash_image_height = tmp_image_height;
 	}
 	else
 	{
-		const auto [tmp_width, tmp_height] = hash_image_sizes.at(hash_type);
+		const auto [tmp_width, tmp_height] = hash_sizes.at(hash_type);
 		hash_width = tmp_width;
 		hash_height = tmp_height;
+
+		const auto [tmp_image_width, tmp_image_height] = hash_image_sizes.at(hash_type);
+		hash_image_width = tmp_image_width;
+		hash_image_height = tmp_image_height;
 	}
 
 	if (FLAGS_get_path)
@@ -724,38 +756,22 @@ int main(int argc, char** argv)
 	{
 		const auto input_file = to_hash_files[idx];
 
-		auto l_hash_width = hash_width;
-		auto l_hash_height = hash_height;
 
 		phOutPathData p;
 		p.FLAGS_hash = FLAGS_hash;
 		p.input_path = input_file;
 		p.output_path = output_path;
-		p.hash_height = l_hash_height;
-		p.hash_width = l_hash_width;
+		p.hash_height = hash_height;
+		p.hash_width = hash_width;
 
 		auto output_file = GetOutputPath(p);
 
-		// cosine special case
-		if (hash_type == HashType::CosineHash)
-		{
-			l_hash_width = l_hash_width * 4;
-			l_hash_height = l_hash_height * 4;
-		}
-
-		const auto [gray_image, width, height, channels] = GetGrayImage(input_file, l_hash_width, l_hash_height);
+		const auto [gray_image, width, height, channels] = GetGrayImage(input_file, hash_image_width, hash_image_height);
 
 		if (FLAGS_save_gray)
 			SaveImage(output_file, gray_image, width, height, channels);
 
-		const auto hash = hash_function(gray_image, l_hash_width, l_hash_height, channels);
-
-		// cosine special case
-		if (hash_type == HashType::CosineHash)
-		{
-			l_hash_width = l_hash_width / 4;
-			l_hash_height = l_hash_height / 4;
-		}
+		const auto hash = hash_function(gray_image, hash_image_width, hash_image_height, channels);
 
 		const auto hash_string = GetHashString(hash);
 		const auto hesh_hex_string = HashBinToHex(hash_string);
