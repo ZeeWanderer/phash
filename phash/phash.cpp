@@ -306,6 +306,7 @@ hash_bin GetDiffHash(stbi_uc* image, int width, int height, int channels)
 
 	for (size_t idx = 0; idx < diff_size; idx++)
 	{
+		// does not matter as long as only hash difference matters
 		if (difference[idx] <= 0)
 		{
 			hash[idx] = 0;
@@ -316,6 +317,67 @@ hash_bin GetDiffHash(stbi_uc* image, int width, int height, int channels)
 		}
 	}
 
+	delete[] difference;
+	return hash;
+}
+
+hash_bin GetGradientHash(stbi_uc* image, int width, int height, int channels)
+{
+	// OPTIMIZE WHEN I WILL BE OF SOUND MIND AFTER NEW YEAR CELEBRATION
+
+	const size_t size = (size_t)width * height * channels;
+	const size_t summ_size = (size_t)(width) * 2 * channels;
+	const size_t diff_size = (size_t)(width - 1) * 2 * channels;
+
+	int* summ_arr = new int[summ_size];
+	memset(summ_arr, 0, summ_size * sizeof(summ_arr[0]));
+
+	int* difference = new int[diff_size];
+
+	// SUMM COLUMNS
+	for (size_t idx0 = 0; idx0 < width; idx0++)
+	{
+		for (size_t idx1 = 0; idx1 < height; idx1++)
+		{
+			summ_arr[0 * width + idx0] += image[idx1 * width + idx0];
+		}
+	}
+
+	// SUMM ROWS
+	for (size_t idx0 = 0; idx0 < height; idx0++)
+	{
+		for (size_t idx1 = 0; idx1 < width; idx1++)
+		{
+			summ_arr[1 * width + idx0] += image[idx0 * width + idx1];
+		}
+	}
+
+	// DIFFERENCE
+	for (size_t idx0 = 0; idx0 < 2; idx0++)
+	{
+		for (size_t idx1 = 0; idx1 < width - 1; idx1++)
+		{
+			difference[idx0 * (width - 1) + idx1] = summ_arr[idx0 * width + idx1 + 1] - summ_arr[idx0 * width + idx1];
+		}
+	}
+
+	hash_bin hash(diff_size);
+
+
+	for (size_t idx = 0; idx < diff_size; idx++)
+	{
+		// does not matter as long as only hash difference matters
+		if (difference[idx] <= 0)
+		{
+			hash[idx] = 0;
+		}
+		else
+		{
+			hash[idx] = 1;
+		}
+	}
+
+	delete[] summ_arr;
 	delete[] difference;
 	return hash;
 }
@@ -384,6 +446,7 @@ enum class HashType : int
 	SimpleHash,
 	MedianHash,
 	DiffHash,
+	GradientHash,
 	CosineHash
 };
 
@@ -409,7 +472,8 @@ const std::map<HashType, std::tuple<int, int>> hash_sizes
 	{HashType::SimpleHash, {32, 32}},
 	{HashType::MedianHash, {32, 32}},
 	{HashType::CosineHash, {8, 8}},
-	{HashType::DiffHash, {32, 32}} // (K+1)xK
+	{HashType::DiffHash, {32, 32}}, // (K+1)xK
+	{HashType::GradientHash, {64, 2}} // K x 2
 };
 
 const std::map<HashType, std::tuple<int, int>> hash_image_sizes
@@ -417,7 +481,8 @@ const std::map<HashType, std::tuple<int, int>> hash_image_sizes
 	{HashType::SimpleHash, {32, 32}},
 	{HashType::MedianHash, {32, 32}},
 	{HashType::CosineHash, {32, 32}},
-	{HashType::DiffHash, {33, 32}} // (K+1)xK
+	{HashType::DiffHash, {33, 32}}, // (K+1)xK
+	{HashType::GradientHash, {65, 65}}// (K+1)x(K+1)
 };
 
 typedef std::function<hash_bin(stbi_uc * image, int width, int height, int channels)> Hash_func;
@@ -429,7 +494,8 @@ const std::map<HashType, Hash_func> hash_functions
 	{HashType::SimpleHash, GetSimpleHash},
 	{HashType::MedianHash, GetMedianHash},
 	{HashType::DiffHash, GetDiffHash},
-	{HashType::CosineHash, GetCosineHash}
+	{HashType::CosineHash, GetCosineHash},
+	{HashType::GradientHash, GetGradientHash}
 };
 
 const std::tuple<int, int> GetHashResolution(const int base, const HashType type)
@@ -441,6 +507,8 @@ const std::tuple<int, int> GetHashResolution(const int base, const HashType type
 	case HashType::CosineHash:
 	case HashType::DiffHash:
 		return {base, base};
+	case HashType::GradientHash:
+		return { base, 2 };
 	default:
 		return { 0, 0 };
 	}
@@ -457,6 +525,8 @@ const std::tuple<int, int> GetHashImageResolution(const int base, const HashType
 		return { base*4, base*4 };
 	case HashType::DiffHash:
 		return { base + 1, base };
+	case HashType::GradientHash:
+		return { base + 1, base + 1 };
 	default:
 		return { 0, 0 };
 	}
@@ -472,6 +542,8 @@ HashType GetHashTypeFromString(const std::string& type)
 		return HashType::DiffHash;
 	if (type == "cosine")
 		return HashType::CosineHash;
+	if (type == "grad")
+		return HashType::GradientHash;
 
 	return HashType::Unknown;
 }
@@ -494,10 +566,10 @@ int main(int argc, char** argv)
 
 	program.add_argument("-h", "--hash")
 		.required()
-		.help("Specify one hash type from [simple, median, diff, cosine]")
+		.help("Specify one hash type from [simple, median, diff, cosine, grad]")
 		.action([](const std::string& value) 
 			{
-				static const std::vector<std::string> choices = { "simple", "median", "diff", "cosine" };
+				static const std::vector<std::string> choices = { "simple", "median", "diff", "cosine", "grad" };
 				if (std::find(choices.begin(), choices.end(), value) != choices.end()) 
 				{
 					return value;
@@ -865,6 +937,7 @@ int main(int argc, char** argv)
 				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
 				break;
 			case ErrorType::MER:
+				// TODO:
 				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
 				break;
 			default:
