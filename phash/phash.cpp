@@ -111,26 +111,60 @@ std::string HashBinToHex(const std::string& hash)
 
 int SaveHashFile(const std::filesystem::path image_file, const std::string hash_string, const std::string hesh_hex_string)
 {
-	auto out_hex_file = image_file.parent_path() / image_file.filename().replace_extension("hash");
+	auto out_hex_file = image_file;
+	out_hex_file.replace_extension("hash");
+
 	std::filesystem::create_directories(out_hex_file.parent_path());
 	std::ofstream out_hash(out_hex_file.c_str());
 	out_hash << hash_string << std::endl << hesh_hex_string;
 	return 0;
 }
 
-int SaveDuplicatesFile(const std::filesystem::path duplicates_file, const std::vector<bool> b_is_duplicate, const std::vector<std::filesystem::path> duplicate_files)
+int SaveDuplicatesFile(const std::filesystem::path duplicates_file, const std::vector<bool> b_is_duplicate, const std::vector<std::filesystem::path> duplicate_files, const bool bOutputToCMD = false)
 {
-	auto out_dup_file = duplicates_file.parent_path() / duplicates_file.filename().replace_extension("dup");
-	std::filesystem::create_directories(out_dup_file.parent_path());
-	std::ofstream out_hash(out_dup_file.c_str());
-	for (size_t idx = 0; idx < b_is_duplicate.size(); idx++)
+#ifdef __TRACE
+	std::cout << "SaveDuplicatesFile :" << std::endl;
+#endif
+	if(!bOutputToCMD)
 	{
-		if (b_is_duplicate[idx])
+		auto out_dup_file = duplicates_file;
+		out_dup_file.replace_extension("dup");
+
+		std::filesystem::create_directories(out_dup_file.parent_path());
+		std::ofstream out_hash(out_dup_file.c_str());
+#ifdef __TRACE
+		std::cout << "out_hash.is_open() :" << out_hash.is_open() << std::endl;
+#endif
+		for (size_t idx = 0; idx < b_is_duplicate.size(); idx++)
 		{
-			out_hash << duplicate_files[idx].string().c_str() << std::endl;
+			if (b_is_duplicate[idx])
+			{
+#ifdef __TRACE
+				std::cout << "duplicate_files[idx].string().c_str() :" << duplicate_files[idx].string().c_str() << std::endl;
+#endif
+				out_hash << duplicate_files[idx].string().c_str() << std::endl;
+
+			}
+		}
+		out_hash.close();
+	}
+	else
+	{
+		for (size_t idx = 0; idx < b_is_duplicate.size(); idx++)
+		{
+			if (b_is_duplicate[idx])
+			{
+#ifdef __TRACE
+				std::cout << "duplicate_files[idx].string().c_str() :" << duplicate_files[idx].string().c_str() << std::endl;
+#endif
+				std::cout << duplicate_files[idx].string().c_str();
+				if(idx < b_is_duplicate.size()-1)
+					std::cout << "|";
+
+			}
 		}
 	}
-
+	
 	return 0;
 }
 
@@ -145,21 +179,40 @@ struct phOutPathData
 
 std::filesystem::path GetOutputPath(phOutPathData& p)
 {
+	using namespace std::filesystem;
 	//TODO: get difference in path to exec dir and get all path except top dir
 	//TODO: replace with proper concatenation
+	const auto filename = p.input_path.filename();
+	const auto input_path_r = relative(p.input_path).remove_filename();
 
-	auto parent_dir = p.input_path.parent_path().filename().string();
-	const std::filesystem::path output_p{ p.output_path / parent_dir / p.FLAGS_hash /
-					("r_" + std::to_string(p.hash_width) + "x" + std::to_string(p.hash_height)) / p.input_path.filename().string() };
+	auto output_p = relative(p.output_path);
+
+	for (auto it = ++input_path_r.begin(); it != input_path_r.end(); ++it)
+	{
+		output_p /= *it;
+	}
+	
+	output_p /= path{ p.FLAGS_hash } / path{ ("r_"s + std::to_string(p.hash_width) + "x"s + std::to_string(p.hash_height)) } / filename;
 	return output_p;
 }
 
-std::string GetHashFromFile(const std::filesystem::path image_file)
+std::string GetHashFromFile(const std::filesystem::path image_file, const bool bGetBin = true)
 {
-	auto in_hash_file = image_file.parent_path() / image_file.filename().replace_extension("hash");
+	auto in_hash_file = image_file;
+	in_hash_file.replace_extension("hash");
+
 	std::ifstream in_hash(in_hash_file.c_str());
 	std::string hash_str;
+
 	std::getline(in_hash, hash_str);
+	//if (bGetBin)
+	//{
+	//	std::getline(in_hash, hash_str);
+	//}
+	//else
+	//{
+
+	//}
 	return hash_str;
 }
 
@@ -334,6 +387,23 @@ enum class HashType : int
 	CosineHash
 };
 
+enum class ErrorType : int
+{
+	Unknown,
+	BER,
+	MER
+};
+
+ErrorType GetErrorTypeFromString(const std::string& type)
+{
+	if (type == "ber")
+		return ErrorType::BER;
+	if (type == "mer")
+		return ErrorType::MER;
+
+	return ErrorType::Unknown;
+}
+
 const std::map<HashType, std::tuple<int, int>> hash_image_sizes
 {
 	{HashType::SimpleHash, {32, 32}},
@@ -412,6 +482,19 @@ int main(int argc, char** argv)
 				throw std::runtime_error("Invalid hash: "s + value);
 			});
 
+	program.add_argument("-et","--error_type")
+		.required()
+		.help("Specify one error type from [ber, mer]")
+		.action([](const std::string& value)
+			{
+				static const std::vector<std::string> choices = {"ber", "mer"};
+				if (std::find(choices.begin(), choices.end(), value) != choices.end())
+				{
+					return value;
+				}
+				throw std::runtime_error("Invalid hash: "s + value);
+			});
+
 	program.add_argument("-r","--resolution")
 		.help("Specify resolution base")
 		.default_value(0)
@@ -431,18 +514,29 @@ int main(int argc, char** argv)
 			});
 
 	program.add_argument("--save")
+		.help("save resized grayscale images")
 		.default_value(false)
 		.implicit_value(true);
 
 	program.add_argument("--force")
+		.help("froce rehash of all files")
+		.default_value(false)
+		.implicit_value(true);
+
+	program.add_argument("--get_path")
+		.help("output path to dup file for given parameters")
 		.default_value(false)
 		.implicit_value(true);
 
 	program.add_argument("-p", "--profile")
+		.help("output hash time")
 		.default_value(false)
 		.implicit_value(true);
 
-
+	program.add_argument("--out_cmd")
+		.help("output duplicates to console instead of file")
+		.default_value(false)
+		.implicit_value(true);
 
 	try
 	{
@@ -462,7 +556,12 @@ int main(int argc, char** argv)
 	auto FLAGS_input_path = program.get<std::string>("--input");
 	auto FLAGS_output_path = program.get<std::string>("--output");
 	auto FLAGS_hash = program.get<std::string>("--hash");
+	auto FLAGS_error_type = program.get<std::string>("--error_type");
 	auto FLAGS_error = program.get<double>("--error");
+
+	auto FLAGS_get_path = program.get<bool>("--get_path");
+
+	auto FLAGS_out_cmd = program.get<bool>("--out_cmd");
 
 	std::string FLAGS_base_for_duplicates_path;
 	bool bSearchForDuplicates = false;
@@ -477,6 +576,7 @@ int main(int argc, char** argv)
 	const std::filesystem::path input_path{ FLAGS_input_path };
 	const std::filesystem::path output_path{ FLAGS_output_path };
 	const std::filesystem::path base_for_duplicates_path{ FLAGS_base_for_duplicates_path };
+
 
 
 	if (bSearchForDuplicates)
@@ -512,12 +612,52 @@ int main(int argc, char** argv)
 		}
 	}
 
+	// TODO: handle MER in hex
+	const auto error_type = GetErrorTypeFromString(FLAGS_error_type);
+
 	const auto hash_type = GetHashTypeFromString(FLAGS_hash);
 	if (hash_type == HashType::Unknown)
 	{
 		std::cout << "Invalid hash method" << std::endl;
 		return 2;
 	}
+
+	// Define in loop shared parameters
+	int hash_width, hash_height;
+
+	if (FLAGS_resolution)
+	{
+		const auto [tmp_width, tmp_height] = GetHashResolution(FLAGS_resolution, hash_type);
+		hash_width = tmp_width;
+		hash_height = tmp_height;
+	}
+	else
+	{
+		const auto [tmp_width, tmp_height] = hash_image_sizes.at(hash_type);
+		hash_width = tmp_width;
+		hash_height = tmp_height;
+	}
+
+	if (FLAGS_get_path)
+	{
+
+		phOutPathData p;
+		p.FLAGS_hash = FLAGS_hash;
+		p.input_path = base_for_duplicates_path;
+		p.output_path = output_path;
+		p.hash_height = hash_height;
+		p.hash_width = hash_width;
+
+		auto output_duplicates_file = GetOutputPath(p);
+
+		std::cout << output_duplicates_file.string();
+		return 0;
+	}
+
+#ifdef __TRACE
+	////////////////////////////////////////
+	std::cout << FLAGS_error << std::endl;
+#endif
 
 	std::vector<std::filesystem::path> input_files;
 
@@ -541,22 +681,6 @@ int main(int argc, char** argv)
 	std::chrono::steady_clock::time_point start;
 	if (FLAGS_profile)
 		start = std::chrono::steady_clock::now();
-
-	// Define in loop shared parameters
-	int hash_width, hash_height;
-
-	if (FLAGS_resolution)
-	{
-		const auto [tmp_width, tmp_height] = GetHashResolution(FLAGS_resolution, hash_type);
-		hash_width = tmp_width;
-		hash_height = tmp_height;
-	}
-	else
-	{
-		const auto [tmp_width, tmp_height] = hash_image_sizes.at(hash_type);
-		hash_width = tmp_width;
-		hash_height = tmp_height;
-	}
 
 	///////////////////////
 	// GET HASHES
@@ -675,11 +799,10 @@ int main(int argc, char** argv)
 		auto base_hash = GetHashFromFile(output_duplicates_file);
 
 
-//#pragma omp parallel for
+#pragma omp parallel for
 		for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
 		{
 			const auto input_file = files_to_check_for_duplicates[idx];
-
 
 			phOutPathData p;
 			p.FLAGS_hash = FLAGS_hash;
@@ -688,29 +811,67 @@ int main(int argc, char** argv)
 			p.hash_height = hash_height;
 			p.hash_width = hash_width;
 
+#ifdef __TRACE
+			std::cout << "input_file :" << input_file << std::endl;
+#endif
+
 			auto output_file = GetOutputPath(p);
 
+#ifdef __TRACE
+			std::cout << "output_file :" << output_file << std::endl;
+#endif
+
 			auto curr_hash = GetHashFromFile(output_file);
+#ifdef __TRACE
+			std::cout << "curr_hash :" << curr_hash << std::endl;
+#endif
 			auto base_n = curr_hash.size();
 
 			auto errors = 0;
 
+			auto error_rate = 0.0;
+
 			for (auto idx = 0ull; idx < base_n; idx++)
 			{
 				if (base_hash[idx] != curr_hash[idx])
+				{
 					errors++;
+				}
 			}
 
-			auto error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
+#ifdef __TRACE
+			std::cout << "errors :" << errors << std::endl;
+#endif
 
+			switch (error_type)
+			{
+			case ErrorType::BER:
+				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
+				break;
+			case ErrorType::MER:
+				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
+				break;
+			default:
+				break;
+			}
+
+#ifdef __TRACE
+			std::cout << "error_rate :" << error_rate << std::endl;
+#endif
+			
 			if (error_rate <= FLAGS_error)
 			{
+				
 				b_is_duplicate_files[idx] = true;
 			}
 
+#ifdef __TRACE
+			std::cout << "is duplicate :" << (error_rate <= FLAGS_error) << std::endl;
+			std::cout << std::endl;
+#endif
 		}
 
-		SaveDuplicatesFile(output_duplicates_file, b_is_duplicate_files, files_to_check_for_duplicates);
+		SaveDuplicatesFile(output_duplicates_file, b_is_duplicate_files, files_to_check_for_duplicates, FLAGS_out_cmd);
 	}
 
 
