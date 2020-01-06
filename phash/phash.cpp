@@ -548,6 +548,31 @@ HashType GetHashTypeFromString(const std::string& type)
 	return HashType::Unknown;
 }
 
+struct hash_substring
+{
+	int idx;
+	std::string_view substring;
+
+	bool operator<(const hash_substring& a) const
+	{
+		return this->substring < a.substring;
+	}
+
+	bool operator<(const std::string& a) const
+	{
+		return this->substring < a;
+	}
+
+	bool operator>(const std::string& a) const
+	{
+		return this->substring > a;
+	}
+};
+
+bool operator<(const std::string& left, const hash_substring& s)
+{
+	return left < s.substring;
+}
 
 int main(int argc, char** argv)
 {
@@ -567,22 +592,9 @@ int main(int argc, char** argv)
 	program.add_argument("-h", "--hash")
 		.required()
 		.help("Specify one hash type from [simple, median, diff, cosine, grad]")
-		.action([](const std::string& value) 
-			{
-				static const std::vector<std::string> choices = { "simple", "median", "diff", "cosine", "grad" };
-				if (std::find(choices.begin(), choices.end(), value) != choices.end()) 
-				{
-					return value;
-				}
-				throw std::runtime_error("Invalid hash: "s + value);
-			});
-
-	program.add_argument("-et","--error_type")
-		.required()
-		.help("Specify one error type from [ber, mer]")
 		.action([](const std::string& value)
 			{
-				static const std::vector<std::string> choices = {"ber", "mer"};
+				static const std::vector<std::string> choices = { "simple", "median", "diff", "cosine", "grad" };
 				if (std::find(choices.begin(), choices.end(), value) != choices.end())
 				{
 					return value;
@@ -590,22 +602,43 @@ int main(int argc, char** argv)
 				throw std::runtime_error("Invalid hash: "s + value);
 			});
 
-	program.add_argument("-r","--resolution")
+	program.add_argument("-et", "--error_type")
+		.help("Specify one error type from [ber, mer]")
+		.action([](const std::string& value)
+			{
+				static const std::vector<std::string> choices = { "ber", "mer" };
+				if (std::find(choices.begin(), choices.end(), value) != choices.end())
+				{
+					return value;
+				}
+				throw std::runtime_error("Invalid hash: "s + value);
+			});
+
+	program.add_argument("-r", "--resolution")
 		.help("Specify resolution base")
 		.default_value(0)
-		.action([](const std::string& value) 
+		.action([](const std::string& value)
 			{	int retval;
-				std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
-				return retval; 
+	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
+	return retval;
 			});
 
 	program.add_argument("-e", "--error")
 		.help("supply error rate (0...1], default is 0.17")
 		.default_value(0.17)
-		.action([](const std::string& value) 
+		.action([](const std::string& value)
 			{	double retval;
-				std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
-				return retval; 
+	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
+	return retval;
+			});
+
+	program.add_argument("-dst", "--distance")
+		.help("supply distance [1...), no default. If specified then preffered over error rate. Used for HENGINE only.")
+		.default_value(0)
+		.action([](const std::string& value)
+			{	size_t retval;
+	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
+	return retval;
 			});
 
 	program.add_argument("--save")
@@ -633,6 +666,11 @@ int main(int argc, char** argv)
 		.default_value(false)
 		.implicit_value(true);
 
+	program.add_argument("--no_hengine")
+		.help("disables hengine, requires --error_type")
+		.default_value(true)
+		.implicit_value(false);
+
 	try
 	{
 		program.parse_args(argc, argv);
@@ -651,8 +689,12 @@ int main(int argc, char** argv)
 	auto FLAGS_input_path = program.get<std::string>("--input");
 	auto FLAGS_output_path = program.get<std::string>("--output");
 	auto FLAGS_hash = program.get<std::string>("--hash");
-	auto FLAGS_error_type = program.get<std::string>("--error_type");
+	
+	auto FLAGS_distance = program.get<size_t>("--distance");
+
 	auto FLAGS_error = program.get<double>("--error");
+
+	auto FLAGS_hengine = program.get<bool>("--no_hengine");
 
 	auto FLAGS_get_path = program.get<bool>("--get_path");
 
@@ -665,7 +707,22 @@ int main(int argc, char** argv)
 		FLAGS_base_for_duplicates_path = program.get<std::string>("--duplicates");
 		bSearchForDuplicates = true;
 	}
-	catch(...){ }
+	catch (...) {}
+
+	std::string FLAGS_error_type;
+	try
+	{
+		FLAGS_error_type = program.get<std::string>("--error_type");
+	}
+	catch (...) 
+	{
+		if (!FLAGS_hengine)
+		{
+			std::cout << "--no_hengine requires --error_type to be specified" << std::endl;
+			exit(0);
+		}
+	}
+	
 
 
 	const std::filesystem::path input_path{ FLAGS_input_path };
@@ -708,7 +765,7 @@ int main(int argc, char** argv)
 	}
 
 	// TODO: handle MER in hex
-	const auto error_type = GetErrorTypeFromString(FLAGS_error_type);
+	
 
 	const auto hash_type = GetHashTypeFromString(FLAGS_hash);
 	if (hash_type == HashType::Unknown)
@@ -782,9 +839,7 @@ int main(int argc, char** argv)
 		input_files.emplace_back(input_path);
 	}
 
-	std::chrono::steady_clock::time_point start;
-	if (FLAGS_profile)
-		start = std::chrono::steady_clock::now();
+
 
 	///////////////////////
 	// GET HASHES
@@ -817,12 +872,22 @@ int main(int argc, char** argv)
 			{
 				to_hash_files.emplace_back(input_file);
 			}
-			
+
 		}
 	}
 
 	const auto hash_function = hash_functions.at(hash_type);
 
+	std::chrono::steady_clock::time_point start;
+	if (FLAGS_profile)
+		start = std::chrono::steady_clock::now();
+
+//#ifdef _DEBUG
+//	for (int idx = 0; idx < to_hash_files.size(); idx++)
+//#else
+//#pragma omp parallel for
+//	for (int idx = 0; idx < to_hash_files.size(); idx++)
+//#endif
 #pragma omp parallel for
 	for (int idx = 0; idx < to_hash_files.size(); idx++)
 	{
@@ -857,7 +922,7 @@ int main(int argc, char** argv)
 	{
 		auto end = std::chrono::steady_clock::now();
 		auto duration = end - start;
-		std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::seconds>(duration).count() << " sec\n";
+		std::cout << "elapsed time hashing: " << std::chrono::duration_cast<std::chrono::seconds>(duration).count() << " sec\n";
 	}
 
 	///////////////////////
@@ -887,83 +952,414 @@ int main(int argc, char** argv)
 		auto base_hash = GetHashFromFile(output_duplicates_file);
 
 
-#pragma omp parallel for
-		for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+		if (!FLAGS_hengine)
 		{
-			const auto input_file = files_to_check_for_duplicates[idx];
+			const auto error_type = GetErrorTypeFromString(FLAGS_error_type);
 
-			phOutPathData p;
-			p.FLAGS_hash = FLAGS_hash;
-			p.input_path = input_file;
-			p.output_path = output_path;
-			p.hash_height = hash_height;
-			p.hash_width = hash_width;
-
-#ifdef __TRACE
-			std::cout << "input_file :" << input_file << std::endl;
+			if (FLAGS_profile)
+				start = std::chrono::steady_clock::now();
+#ifdef _DEBUG
+			//#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+#else
+#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
 #endif
-
-			auto output_file = GetOutputPath(p);
-
-#ifdef __TRACE
-			std::cout << "output_file :" << output_file << std::endl;
-#endif
-
-			auto curr_hash = GetHashFromFile(output_file);
-#ifdef __TRACE
-			std::cout << "curr_hash :" << curr_hash << std::endl;
-#endif
-			auto base_n = curr_hash.size();
-
-			auto errors = 0;
-
-			auto error_rate = 0.0;
-
-			for (auto idx = 0ull; idx < base_n; idx++)
 			{
-				if (base_hash[idx] != curr_hash[idx])
+				const auto input_file = files_to_check_for_duplicates[idx];
+
+				phOutPathData p;
+				p.FLAGS_hash = FLAGS_hash;
+				p.input_path = input_file;
+				p.output_path = output_path;
+				p.hash_height = hash_height;
+				p.hash_width = hash_width;
+
+#ifdef __TRACE
+				std::cout << "input_file :" << input_file << std::endl;
+#endif
+
+				auto output_file = GetOutputPath(p);
+
+#ifdef __TRACE
+				std::cout << "output_file :" << output_file << std::endl;
+#endif
+
+				auto curr_hash = GetHashFromFile(output_file);
+#ifdef __TRACE
+				std::cout << "curr_hash :" << curr_hash << std::endl;
+#endif
+				auto base_n = curr_hash.size();
+
+				auto errors = 0;
+
+				auto error_rate = 0.0;
+
+				for (auto idx = 0ull; idx < base_n; idx++)
 				{
-					errors++;
+					if (base_hash[idx] != curr_hash[idx])
+					{
+						errors++;
+					}
+				}
+
+#ifdef __TRACE
+				std::cout << "errors :" << errors << std::endl;
+#endif
+
+				switch (error_type)
+				{
+				case ErrorType::BER:
+					error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
+					break;
+				case ErrorType::MER:
+					// TODO:
+					error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
+					break;
+				default:
+					break;
+				}
+
+#ifdef __TRACE
+				std::cout << "error_rate :" << error_rate << std::endl;
+#endif
+
+				if (error_rate <= FLAGS_error)
+				{
+
+					b_is_duplicate_files[idx] = true;
+				}
+
+#ifdef __TRACE
+				std::cout << "is duplicate :" << (error_rate <= FLAGS_error) << std::endl;
+				std::cout << std::endl;
+#endif
+			}
+
+			if (FLAGS_profile)
+			{
+				auto end = std::chrono::steady_clock::now();
+				auto duration = end - start;
+				std::cout << "elapsed time HEngine: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << " msec\n";
+			}
+
+			SaveDuplicatesFile(output_duplicates_file, b_is_duplicate_files, files_to_check_for_duplicates, FLAGS_out_cmd);
+		}
+		else // HENGINE BRANCH START
+		{
+			// TODO: effectively parallelize
+			std::vector<std::string> hash_strings(files_to_check_for_duplicates.size());
+
+			if (FLAGS_profile)
+				start = std::chrono::steady_clock::now();
+
+			// ACTUAL HENGINE START
+			auto hash_size = base_hash.size(); // m
+			auto distance = 0; // k
+			if (FLAGS_distance)
+			{
+				distance = FLAGS_distance;
+				
+			}
+			else
+			{
+				distance = (int)(hash_size * FLAGS_error); 
+			}
+
+			auto split_coef = (distance / 2) + 1; // r
+
+			auto second_batch_size = (int)hash_size % split_coef;
+			auto first_batch_size = split_coef - second_batch_size;
+			auto batch_size = second_batch_size + first_batch_size;
+
+
+			auto first_len = (int)hash_size / split_coef;
+			auto second_len = (int)ceilf((float)hash_size / (float)split_coef);
+
+			auto b_use_sb = second_batch_size != 0;
+
+			// POPULATE hash_strings from files
+#ifdef _DEBUG
+//#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+#else
+#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+#endif
+			{
+				const auto input_file = files_to_check_for_duplicates[idx];
+
+				phOutPathData p;
+				p.FLAGS_hash = FLAGS_hash;
+				p.input_path = input_file;
+				p.output_path = output_path;
+				p.hash_height = hash_height;
+				p.hash_width = hash_width;
+
+#ifdef __TRACE
+				std::cout << "input_file :" << input_file << std::endl;
+#endif
+
+				auto output_file = GetOutputPath(p);
+
+#ifdef __TRACE
+				std::cout << "output_file :" << output_file << std::endl;
+#endif
+
+				auto curr_hash = GetHashFromFile(output_file);
+#ifdef __TRACE
+				std::cout << "curr_hash :" << curr_hash;
+				std::cout << " >= " << idx << std::endl;
+#endif
+				hash_strings[idx] = curr_hash;
+
+			}
+#ifdef __TRACE
+			std::cout << std::endl;
+#endif
+
+#ifdef __TRACE
+			std::cout << "hash_size :" << hash_size << " // m" << std::endl;
+			std::cout << "distance :" << distance << " // k" << std::endl;
+			std::cout << "split_coef :" << split_coef << " // r = floor(k/2)+1" << std::endl;
+			std::cout << "first_batch_size :"  << first_batch_size << " // r - (m mod r)" << std::endl;
+			std::cout << "first_len :" << first_len << " // floor(m / r)" << std::endl;
+			std::cout << "second_batch_size :" << second_batch_size << " // m mod r " << std::endl;
+			std::cout << "second_len :" << second_len << " // celi(m/r)" << std::endl;
+#endif
+
+			// first dimension is substring position
+			std::vector<std::vector<std::string>> base_hash_substrings(batch_size);
+
+#ifdef __TRACE
+			std::cout << "base hash :" << base_hash << std::endl;
+			std::cout << "base hash substrings :" << batch_size << std::endl;
+			std::cout << std::endl;
+#endif
+
+			{
+				size_t offset = 0;
+				for (auto idx = 0; idx < first_batch_size; idx++)
+				{
+					base_hash_substrings[idx].reserve(first_len + 1);
+					base_hash_substrings[idx].emplace_back(base_hash.substr(offset, first_len));
+#ifdef __TRACE
+					std::cout << "--------- " << idx << "--------- " << std::endl;
+					std::cout << "substring :" << base_hash.substr(offset, first_len) << std::endl;
+#endif
+					offset += first_len;
+				}
+
+				for (auto idx = first_batch_size; idx < batch_size; idx++)
+				{
+					base_hash_substrings[idx].reserve(second_len + 1);
+					base_hash_substrings[idx].emplace_back(base_hash.substr(offset, second_len));
+#ifdef __TRACE
+					std::cout << "--------- " << idx << "--------- " << std::endl;
+					std::cout << "substring :" << base_hash.substr(offset, second_len) << std::endl;
+#endif
+					offset += second_len;
 				}
 			}
 
 #ifdef __TRACE
-			std::cout << "errors :" << errors << std::endl;
+			std::cout << std::endl;
+			std::cout << "base additional generated hash substrings :" << std::endl;
 #endif
 
-			switch (error_type)
+			for (auto idx0 = 0; idx0 < base_hash_substrings.size(); idx0++)
 			{
-			case ErrorType::BER:
-				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
-				break;
-			case ErrorType::MER:
-				// TODO:
-				error_rate = static_cast<double>(errors) / static_cast<double>(base_n);
-				break;
-			default:
-				break;
+#ifdef __TRACE
+				std::cout << "--------- " << idx0 << "--------- " << std::endl;
+				std::cout << "original :" << base_hash_substrings[idx0][0] << std::endl;
+#endif
+				for (auto idx1 = 0; idx1 < base_hash_substrings[idx0][0].size(); idx1++)
+				{
+					auto tmp = base_hash_substrings[idx0][0];
+					tmp[idx1] = tmp[idx1] == '0' ? '1' : '0';
+					base_hash_substrings[idx0].emplace_back(tmp);
+
+#ifdef __TRACE
+					std::cout << "generated :" << tmp << std::endl;
+#endif
+				}
 			}
 
 #ifdef __TRACE
-			std::cout << "error_rate :" << error_rate << std::endl;
-#endif
-			
-			if (error_rate <= FLAGS_error)
-			{
-				
-				b_is_duplicate_files[idx] = true;
-			}
-
-#ifdef __TRACE
-			std::cout << "is duplicate :" << (error_rate <= FLAGS_error) << std::endl;
 			std::cout << std::endl;
 #endif
+			
+
+			// first dimension is substring position
+			std::vector<std::vector<hash_substring>> all_hash_substrings(batch_size);
+
+			{
+#ifdef __TRACE
+				std::cout << "hashes substrings: " << std::endl;
+#endif
+				
+				auto hash_strings_size = hash_strings.size();
+				for (auto idx0 = 0; idx0 < first_batch_size; idx0++)
+				{
+#ifdef __TRACE
+					std::cout << "--------- " << idx0 << "--------- " << std::endl;
+#endif
+					auto& tmp = all_hash_substrings[idx0];
+					tmp.reserve(hash_strings_size);
+					size_t offset = (size_t)idx0 * first_len;
+					for (auto idx1 = 0; idx1 < hash_strings.size(); idx1++)
+					{
+						tmp.emplace_back(hash_substring{ idx1 , static_cast<std::string_view>(hash_strings[idx1]).substr(offset, first_len) });
+#ifdef __TRACE
+						std::cout << "substring :" << static_cast<std::string_view>(hash_strings[idx1]).substr(offset, first_len);
+						std::cout << " >= " << idx1 << std::endl;
+#endif
+
+					}
+
+				}
+
+
+				for (auto idx0 = first_batch_size; idx0 < batch_size; idx0++)
+				{
+#ifdef __TRACE
+					std::cout << "--------- " << idx0 << "--------- " << std::endl;
+#endif
+					auto& tmp = all_hash_substrings[idx0];
+					tmp.reserve(hash_strings_size);
+					size_t offset = (size_t)first_len * first_batch_size + ((size_t)idx0- first_batch_size) * second_len;
+					for (auto idx1 = 0; idx1 < hash_strings.size(); idx1++)
+					{
+						tmp.emplace_back(hash_substring{ idx1 , static_cast<std::string_view>(hash_strings[idx1]).substr(offset, second_len) });
+#ifdef __TRACE
+						std::cout << "substring :" << static_cast<std::string_view>(hash_strings[idx1]).substr(offset, second_len);
+						std::cout << " >= " << idx1 << std::endl;
+#endif
+					}
+				}
+
+			}
+
+			std::set<int> found_strings_idx;
+
+			for (auto idx = 0; idx < all_hash_substrings.size(); idx++)
+			{
+				auto& tmp = all_hash_substrings[idx];
+				std::sort(tmp.begin(), tmp.end());
+			}
+
+#ifdef __TRACE
+			std::cout << std::endl;
+			std::cout << "sorted substrings:" << std::endl;
+			for (auto idx = 0; idx < all_hash_substrings.size(); idx++)
+			{
+				std::cout << "--------- " << idx << "--------- " << std::endl;
+				auto& tmp = all_hash_substrings[idx];
+				for (auto idx1 = 0; idx1 < tmp.size(); idx1++)
+				{
+					
+					std::cout << "substring :" << tmp[idx1].substring;
+					std::cout << " >= " << tmp[idx1].idx << std::endl;
+				}
+			}
+			
+#endif
+
+#ifdef __TRACE
+			std::cout << std::endl;
+			std::cout << "binary search: " << std::endl;
+#endif
+			for (auto idx = 0; idx < all_hash_substrings.size(); idx++)
+			{
+				auto& tmp = all_hash_substrings[idx];
+
+#ifdef __TRACE
+				std::cout << "--------- " << idx << "--------- " << std::endl;
+
+#endif
+
+				for (auto idx1 = 0; idx1 < base_hash_substrings[idx].size(); idx1++)
+				{
+					auto& search_val = base_hash_substrings[idx][idx1];
+
+#ifdef __TRACE
+
+					std::cout << "searching for " << search_val;
+					std::cout << " in: [";
+					for (auto idx_ = 0; idx_ < tmp.size(); idx_++)
+					{
+						std::cout << tmp[idx_].substring;
+						if (idx_ != tmp.size() -1)
+						{
+							std::cout << ",";
+						}
+					}
+					std::cout << "]" << std::endl;
+#endif
+
+					auto ret_start = std::lower_bound(tmp.begin(), tmp.end(), search_val);
+					if (ret_start != tmp.end() && ret_start->substring == search_val)
+					{
+						auto ret_end = std::upper_bound(tmp.begin(), tmp.end(), search_val);
+						for (auto it = ret_start; it != ret_end; ++it)
+						{
+#ifdef __TRACE
+							std::cout << "found: " << it->substring;
+							std::cout << " >= " << it->idx << std::endl;
+#endif
+							found_strings_idx.insert(it->idx);
+						}
+					}
+				}
+
+			}
+
+#ifdef __TRACE
+			std::cout << std::endl;
+			std::cout << "checking distance: " << std::endl;
+			std::cout << "base hash: "<< base_hash << std::endl;
+#endif
+
+			for (auto idx : found_strings_idx)
+			{
+				auto& curr_hash = hash_strings[idx];
+
+				auto base_n = curr_hash.size();
+
+				auto errors = 0;
+
+				for (auto idx1 = 0ull; idx1 < base_n; idx1++)
+				{
+					if (base_hash[idx1] != curr_hash[idx1])
+					{
+						errors++;
+					}
+				}
+
+#ifdef __TRACE
+				std::cout <<  "     hash: " << curr_hash << " >= " << idx << std::endl;
+				std::cout << "    errors " << errors << std::endl;
+#endif
+
+				if (errors <= distance)
+				{
+					b_is_duplicate_files[idx] = true;
+				}
+
+			}
+
+			if (FLAGS_profile)
+			{
+				auto end = std::chrono::steady_clock::now();
+				auto duration = end - start;
+				std::cout << "elapsed time HEngine: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << " msec\n";
+			}
+
+			SaveDuplicatesFile(output_duplicates_file, b_is_duplicate_files, files_to_check_for_duplicates, FLAGS_out_cmd);
+
 		}
 
-		SaveDuplicatesFile(output_duplicates_file, b_is_duplicate_files, files_to_check_for_duplicates, FLAGS_out_cmd);
 	}
-
-
 	return 0;
 }
 

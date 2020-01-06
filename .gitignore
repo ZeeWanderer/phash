@@ -12,6 +12,8 @@
 phash/in
 phash/out
 *.hash
+*.jpg
+*.dup
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
