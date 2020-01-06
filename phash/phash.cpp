@@ -1078,46 +1078,6 @@ int main(int argc, char** argv)
 
 			auto b_use_sb = second_batch_size != 0;
 
-			// POPULATE hash_strings from files
-#ifdef _DEBUG
-//#pragma omp parallel for
-			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
-#else
-#pragma omp parallel for
-			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
-#endif
-			{
-				const auto input_file = files_to_check_for_duplicates[idx];
-
-				phOutPathData p;
-				p.FLAGS_hash = FLAGS_hash;
-				p.input_path = input_file;
-				p.output_path = output_path;
-				p.hash_height = hash_height;
-				p.hash_width = hash_width;
-
-#ifdef __TRACE
-				std::cout << "input_file :" << input_file << std::endl;
-#endif
-
-				auto output_file = GetOutputPath(p);
-
-#ifdef __TRACE
-				std::cout << "output_file :" << output_file << std::endl;
-#endif
-
-				auto curr_hash = GetHashFromFile(output_file);
-#ifdef __TRACE
-				std::cout << "curr_hash :" << curr_hash;
-				std::cout << " >= " << idx << std::endl;
-#endif
-				hash_strings[idx] = curr_hash;
-
-			}
-#ifdef __TRACE
-			std::cout << std::endl;
-#endif
-
 #ifdef __TRACE
 			std::cout << "hash_size :" << hash_size << " // m" << std::endl;
 			std::cout << "distance :" << distance << " // k" << std::endl;
@@ -1133,8 +1093,8 @@ int main(int argc, char** argv)
 
 #ifdef __TRACE
 			std::cout << "base hash :" << base_hash << std::endl;
-			std::cout << "base hash substrings :" << batch_size << std::endl;
 			std::cout << std::endl;
+			std::cout << "base hash substrings :" << batch_size << std::endl;
 #endif
 
 			{
@@ -1189,6 +1149,45 @@ int main(int argc, char** argv)
 			std::cout << std::endl;
 #endif
 			
+			// POPULATE hash_strings from files
+#ifdef _DEBUG
+//#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+#else
+#pragma omp parallel for
+			for (int idx = 0; idx < files_to_check_for_duplicates.size(); idx++)
+#endif
+			{
+				const auto input_file = files_to_check_for_duplicates[idx];
+
+				phOutPathData p;
+				p.FLAGS_hash = FLAGS_hash;
+				p.input_path = input_file;
+				p.output_path = output_path;
+				p.hash_height = hash_height;
+				p.hash_width = hash_width;
+
+#ifdef __TRACE
+				std::cout << "input_file :" << input_file << std::endl;
+#endif
+
+				auto output_file = GetOutputPath(p);
+
+#ifdef __TRACE
+				std::cout << "output_file :" << output_file << std::endl;
+#endif
+
+				auto curr_hash = GetHashFromFile(output_file);
+#ifdef __TRACE
+				std::cout << "curr_hash :" << curr_hash;
+				std::cout << " >= " << idx << std::endl;
+#endif
+				hash_strings[idx] = curr_hash;
+
+			}
+#ifdef __TRACE
+			std::cout << std::endl;
+#endif
 
 			// first dimension is substring position
 			std::vector<std::vector<hash_substring>> all_hash_substrings(batch_size);
