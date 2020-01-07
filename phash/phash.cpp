@@ -641,10 +641,10 @@ int main(int argc, char** argv)
 	return retval;
 			});
 
-	program.add_argument("--save")
-		.help("save resized grayscale images")
-		.default_value(false)
-		.implicit_value(true);
+	program.add_argument("-nhe", "--no_hengine")
+		.help("disables hengine, requires --error_type")
+		.default_value(true)
+		.implicit_value(false);
 
 	program.add_argument("--force")
 		.help("froce rehash of all files")
@@ -657,19 +657,19 @@ int main(int argc, char** argv)
 		.implicit_value(true);
 
 	program.add_argument("-p", "--profile")
-		.help("output hash time")
+		.help("output times to shell")
+		.default_value(false)
+		.implicit_value(true);
+
+	program.add_argument("--save")
+		.help("save resized grayscale images")
 		.default_value(false)
 		.implicit_value(true);
 
 	program.add_argument("--out_cmd")
-		.help("output duplicates to console instead of file")
+		.help("output duplicates to shell instead of file")
 		.default_value(false)
 		.implicit_value(true);
-
-	program.add_argument("--no_hengine")
-		.help("disables hengine, requires --error_type")
-		.default_value(true)
-		.implicit_value(false);
 
 	try
 	{
