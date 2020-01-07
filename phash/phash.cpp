@@ -604,7 +604,7 @@ int main(int argc, char** argv)
 
 	program.add_argument("-e", "--error")
 		.help("supply error rate (0...1], default is 0.17")
-		.default_value(0.17f)
+		.default_value(0.17)
 		.action([](const std::string& value)
 			{	double retval;
 	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
