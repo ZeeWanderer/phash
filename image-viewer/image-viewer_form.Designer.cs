@@ -85,7 +85,7 @@
             this.Controls.Add(this.button1);
             this.Controls.Add(this.gui_lv_in_files);
             this.Name = "Form1";
-            this.Text = "Form1";
+            this.Text = "image-viewer";
             ((System.ComponentModel.ISupportInitialize)(this.gui_pb_in_image)).EndInit();
             this.ResumeLayout(false);
 

@@ -198,7 +198,7 @@
             this.Controls.Add(this.gui_cb_hash);
             this.Controls.Add(this.gui_lv_in_files);
             this.Name = "PhashGUI";
-            this.Text = "Form1";
+            this.Text = "phash-gui";
             ((System.ComponentModel.ISupportInitialize)(this.gui_tb_size)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.gui_pb_in_image)).EndInit();
             this.ResumeLayout(false);
