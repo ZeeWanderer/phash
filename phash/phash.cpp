@@ -602,6 +602,15 @@ int main(int argc, char** argv)
 				throw std::runtime_error("Invalid hash: "s + value);
 			});
 
+	program.add_argument("-e", "--error")
+		.help("supply error rate (0...1], default is 0.17")
+		.default_value(0.17f)
+		.action([](const std::string& value)
+			{	double retval;
+	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
+	return retval;
+			});
+
 	program.add_argument("-et", "--error_type")
 		.help("Specify one error type from [ber, mer]")
 		.action([](const std::string& value)
@@ -623,18 +632,9 @@ int main(int argc, char** argv)
 	return retval;
 			});
 
-	program.add_argument("-e", "--error")
-		.help("supply error rate (0...1], default is 0.17")
-		.default_value(0.17)
-		.action([](const std::string& value)
-			{	double retval;
-	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
-	return retval;
-			});
-
 	program.add_argument("-dst", "--distance")
 		.help("supply distance [1...), no default. If specified then preffered over error rate. Used for HENGINE only.")
-		.default_value(0)
+		.default_value(0ull)
 		.action([](const std::string& value)
 			{	size_t retval;
 	std::from_chars(value.c_str(), value.c_str() + value.size(), retval);
