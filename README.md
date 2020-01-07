@@ -9,22 +9,8 @@ A set of utilities for percetual image hashing and dublicate finding.
 
 ### CLI
    - phash
-
-## GUI Usage
-All GUI apps expect input folder to be `./in` and output folder to be `./out`.
-### dup-viewer
-Shows a list of all files (`.dup`) containing duplicate lists.
-Shows all duplicate images for selected file.  
-To match input image and output file either use `--get_path` or manually compose path using given diplicate file path scheme.
-
-### image-viewer
-Simple utility to list and view all image files in `./in`
-### phash-gui
-GUI that uses `phash` and allows to specify most parameters.
-
-`Note: Does not work on some windows versions cause unknown. Not recomended to use for now.`
-
-## CLI Usage
+   
+  ## CLI Usage
 ### Usage: `phash [options]` 
 
 ### Optional arguments:  
@@ -55,3 +41,18 @@ Where:
  - `{computed_resolution}` is the resolution computed internally based on hash algorithm. Can differ from `{resolution}`.
  - `{filename}` is the name of file wich is hashed or is the base for finding duplicates.
  - `{ext}` is either `.hash` for hash file or `.dup` for file containing paths to duplicate images
+
+## GUI Usage
+All GUI apps expect input folder to be `./in` and output folder to be `./out`.
+### dup-viewer
+Shows a list of all files (`.dup`) containing duplicate lists.
+Shows all duplicate images for selected file.  
+To match input image and output file either use `--get_path` or manually compose path using given diplicate file path scheme.
+![dup](https://user-images.githubusercontent.com/8377469/71915117-c0012a00-3183-11ea-83e7-96c9d6cbcbf5.PNG)
+### image-viewer
+Simple utility to list and view all image files in `./in`
+![image](https://user-images.githubusercontent.com/8377469/71915199-e9ba5100-3183-11ea-9f67-03ceb90570a9.png)
+### phash-gui
+GUI that uses `phash` and allows to specify most parameters.
+![image](https://user-images.githubusercontent.com/8377469/71917103-fe98e380-3187-11ea-9d65-2f2b063ccc04.png)
+`Note: Does not work on some windows versions cause unknown. Not recomended to use for now.`
